@@ -1,0 +1,13 @@
+diff --git a/core/bank.py b/core/bank.py
+index b53333f..b8fd8af 100644
+--- a/core/bank.py
++++ b/core/bank.py
+@@ -262,7 +262,7 @@ class BankCore:
+ 
+     def _booking_days(self, at, value_date):
+         moment = at or utc_now()
+-        booking_day = moment.date()
++        booking_day = berlin_date(moment)
+         if value_date is not None:
+             return booking_day, parse_date(value_date)
+         return booking_day, next_business_day(booking_day)

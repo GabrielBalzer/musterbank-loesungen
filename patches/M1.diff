@@ -1,0 +1,28 @@
+diff --git a/core/money.py b/core/money.py
+index ff1b4c1..652af60 100644
+--- a/core/money.py
++++ b/core/money.py
+@@ -1,16 +1,18 @@
+ """Amount helpers shared by the bank modules. All stored amounts are integer cents."""
+-from decimal import Decimal
++from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
++
++CENT = Decimal("0.01")
+ 
+ 
+ def to_cents(amount):
+     """Convert a euro amount (float, int, str or Decimal) to integer cents."""
+     try:
+-        value = float(amount)
+-    except (TypeError, ValueError):
++        value = Decimal(str(amount))
++    except InvalidOperation:
+         raise ValueError("not an amount: %r" % (amount,))
+-    if value != value or value in (float("inf"), float("-inf")):
++    if not value.is_finite():
+         raise ValueError("not an amount: %r" % (amount,))
+-    return int(value * 100)
++    return int(value.quantize(CENT, rounding=ROUND_HALF_UP) * 100)
+ 
+ 
+ def from_cents(cents):

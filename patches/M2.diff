@@ -1,0 +1,17 @@
+diff --git a/core/bank.py b/core/bank.py
+index 58cafbe..5314085 100644
+--- a/core/bank.py
++++ b/core/bank.py
+@@ -456,9 +456,9 @@ class BankCore:
+     # ------------------------------------------------------------------
+ 
+     def _day_basis(self, day_count):
+-        if day_count == "30E/360":
+-            return 360
+-        return 365
++        if day_count == "ACT/365":
++            return 365
++        return 360
+ 
+     def _day_weight(self, day_count, day):
+         if day_count != "30E/360":

@@ -1,0 +1,19 @@
+diff --git a/core/bank.py b/core/bank.py
+index 33452dd..6846c4d 100644
+--- a/core/bank.py
++++ b/core/bank.py
+@@ -483,12 +483,12 @@ class BankCore:
+                 "day_count": product["day_count"]}
+ 
+     def _interest_rows(self, to_date, account_id=None):
+-        sql = "SELECT account_id, booking_date, amount_cents FROM bookings WHERE booking_date <= ?"
++        sql = "SELECT account_id, value_date, amount_cents FROM bookings WHERE value_date <= ?"
+         args = [_iso(to_date)]
+         if account_id is not None:
+             sql += " AND account_id = ?"
+             args.append(account_id)
+-        sql += " ORDER BY account_id, booking_date, id"
++        sql += " ORDER BY account_id, value_date, id"
+         return self.db.execute(sql, args).fetchall()
+ 
+     def _interest_from_rows(self, product, rows, from_date, to_date):

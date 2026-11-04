@@ -1,0 +1,30 @@
+diff --git a/core/bank.py b/core/bank.py
+index b8fd8af..58cafbe 100644
+--- a/core/bank.py
++++ b/core/bank.py
+@@ -296,15 +296,16 @@ class BankCore:
+         if amount_cents <= 0:
+             raise InvalidAmount("amount must be positive")
+         booking_day, value_day = self._booking_days(at, value_date)
+-        account = self._active_account(iban)
+-        new_balance = account["balance_cents"] - amount_cents
+-        if new_balance < -account["overdraft_limit_cents"]:
+-            raise InsufficientFunds(iban)
+-        self.db.execute(
+-            "UPDATE accounts SET balance_cents = ? WHERE id = ?", (new_balance, account["id"])
+-        )
+-        return self._insert_booking(account["id"], booking_day, value_day, -amount_cents, kind,
+-                                    counterparty_name, counterparty_iban, purpose, transfer_id)
++        with self.transaction():
++            account = self._active_account(iban)
++            new_balance = account["balance_cents"] - amount_cents
++            if new_balance < -account["overdraft_limit_cents"]:
++                raise InsufficientFunds(iban)
++            self.db.execute(
++                "UPDATE accounts SET balance_cents = ? WHERE id = ?", (new_balance, account["id"])
++            )
++            return self._insert_booking(account["id"], booking_day, value_day, -amount_cents, kind,
++                                        counterparty_name, counterparty_iban, purpose, transfer_id)
+ 
+     def post_transfer(self, debtor_iban, creditor_iban, amount_cents, creditor_name=None, purpose=None,
+                       at=None, transfer_id=None):

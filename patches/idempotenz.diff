@@ -1,0 +1,183 @@
+diff --git a/core/migrations/008_idempotency.sql b/core/migrations/008_idempotency.sql
+new file mode 100644
+index 0000000..7aec978
+--- /dev/null
++++ b/core/migrations/008_idempotency.sql
+@@ -0,0 +1,7 @@
++CREATE TABLE idempotency_keys (
++    key         TEXT PRIMARY KEY,
++    fingerprint TEXT NOT NULL,
++    status      INTEGER NOT NULL,
++    response    TEXT NOT NULL,
++    created_at  TEXT NOT NULL
++);
+diff --git a/payments/api.py b/payments/api.py
+index 1f6f9da..c13b065 100644
+--- a/payments/api.py
++++ b/payments/api.py
+@@ -7,11 +7,12 @@ from typing import Any, Tuple
+ from urllib.parse import parse_qs, urlparse
+ 
+ from payments.models import TransferRequest, ValidationError
+-from payments.service import AccountNotFound, TransferRejected, TransferService
++from payments.service import AccountNotFound, IdempotencyConflict, TransferService
+ 
+ log = logging.getLogger("musterbank.payments")
+ 
+ MAX_BODY_BYTES = 64 * 1024
++MAX_KEY_LENGTH = 128
+ _TRANSFER_PATH = re.compile(r"^/transfers/(\d+)$")
+ _BALANCE_PATH = re.compile(r"^/accounts/([A-Za-z0-9]+)/balance$")
+ 
+@@ -80,20 +81,21 @@ class ApiHandler(BaseHTTPRequestHandler):
+             self.close_connection = True
+             self._send_json(400, {"error": str(exc)})
+             return
+-        status, payload = self._create_transfer(request)
++        key = self.headers.get("Idempotency-Key", "").strip()
++        if not key or len(key) > MAX_KEY_LENGTH:
++            self._send_json(400, {"error": "Idempotency-Key header is required"})
++            return
++        status, payload = self._create_transfer(key, request)
+         self._send_json(status, payload)
+ 
+-    def _create_transfer(self, request: TransferRequest) -> Tuple[int, Any]:
++    def _create_transfer(self, key: str, request: TransferRequest) -> Tuple[int, Any]:
+         service = self._service()
+         try:
+-            transfer = service.create_transfer(request)
+-            return 201, transfer.to_json()
++            return service.create_idempotent(key, request)
+         except ValidationError as exc:
+             return 400, {"error": str(exc)}
+-        except AccountNotFound:
+-            return 404, {"error": "unknown account"}
+-        except TransferRejected as exc:
+-            return 409, {"error": "rejected", "reason": str(exc)}
++        except IdempotencyConflict:
++            return 422, {"error": "Idempotency-Key was used for a different request"}
+         finally:
+             service.close()
+ 
+diff --git a/payments/service.py b/payments/service.py
+index 3a8ce41..ce1e645 100644
+--- a/payments/service.py
++++ b/payments/service.py
+@@ -1,5 +1,8 @@
+ """Transfer use cases on top of the core bank."""
+-from typing import List, Optional
++import hashlib
++import json
++from dataclasses import asdict
++from typing import Any, Dict, List, Optional, Tuple
+ 
+ from core.bank import BankCore
+ from core.dates import utc_now
+@@ -18,6 +21,10 @@ class AccountNotFound(Exception):
+     """The debtor account does not exist (HTTP 404)."""
+ 
+ 
++class IdempotencyConflict(Exception):
++    """The key was already used for a different request (HTTP 422)."""
++
++
+ class TransferService:
+     def __init__(self, db_path: str):
+         self._bank = BankCore(db_path)
+@@ -55,6 +62,39 @@ class TransferService:
+         assert transfer is not None
+         return transfer
+ 
++    def create_idempotent(self, key: str, request: TransferRequest) -> Tuple[int, Dict[str, Any]]:
++        """Execute a request once per key and replay the stored answer afterwards."""
++        fingerprint = hashlib.sha256(json.dumps(asdict(request), sort_keys=True).encode("utf-8")).hexdigest()
++        db = self._bank.db
++        with self._bank.transaction():
++            row = db.execute(
++                "SELECT fingerprint, status, response FROM idempotency_keys WHERE key = ?", (key,)
++            ).fetchone()
++            if row is not None:
++                if row["fingerprint"] != fingerprint:
++                    raise IdempotencyConflict(key)
++                return row["status"], json.loads(row["response"])
++            status, payload = self._attempt(request)
++            db.execute(
++                "INSERT INTO idempotency_keys (key, fingerprint, status, response, created_at) VALUES (?, ?, ?, ?, ?)",
++                (key, fingerprint, status, json.dumps(payload), utc_now().strftime("%Y-%m-%dT%H:%M:%SZ")),
++            )
++        return status, payload
++
++    def _attempt(self, request: TransferRequest) -> Tuple[int, Dict[str, Any]]:
++        db = self._bank.db
++        db.execute("SAVEPOINT transfer_attempt")
++        try:
++            outcome = 201, self.create_transfer(request).to_json()
++        except AccountNotFound:
++            outcome = 404, {"error": "unknown account"}
++        except TransferRejected as exc:
++            outcome = 409, {"error": "rejected", "reason": str(exc)}
++        if outcome[0] != 201:
++            db.execute("ROLLBACK TO transfer_attempt")
++        db.execute("RELEASE transfer_attempt")
++        return outcome
++
+     def get_transfer(self, transfer_id: int) -> Optional[Transfer]:
+         return self._transfers.get(transfer_id)
+ 
+diff --git a/tests/test_payments.py b/tests/test_payments.py
+index 8d3bf17..20a5065 100644
+--- a/tests/test_payments.py
++++ b/tests/test_payments.py
+@@ -1,6 +1,7 @@
+ import json
+ import urllib.error
+ import urllib.request
++import uuid
+ 
+ import pytest
+ 
+@@ -20,7 +21,8 @@ def _request(giro, **changes):
+ 
+ def _call(url, path, payload=None):
+     data = None if payload is None else json.dumps(payload).encode("utf-8")
+-    request = urllib.request.Request(url + path, data=data, method="POST" if data else "GET")
++    headers = {"Idempotency-Key": uuid.uuid4().hex}
++    request = urllib.request.Request(url + path, data=data, headers=headers, method="POST" if data else "GET")
+     try:
+         with urllib.request.urlopen(request, timeout=10) as response:
+             return response.status, json.loads(response.read())
+diff --git a/tools/loadgen.py b/tools/loadgen.py
+index 4c455fc..ba861cf 100644
+--- a/tools/loadgen.py
++++ b/tools/loadgen.py
+@@ -53,7 +53,8 @@ class Worker(threading.Thread):
+         for _ in range(self.count):
+             started = time.perf_counter()
+             try:
+-                conn.request("POST", "/transfers", self._payload(), {"Content-Type": "application/json"})
++                headers = {"Content-Type": "application/json", "Idempotency-Key": "%032x" % int(self.rng.random() * 2 ** 128)}
++                conn.request("POST", "/transfers", self._payload(), headers)
+                 response = conn.getresponse()
+                 response.read()
+                 status = response.status
+diff --git a/web/app.py b/web/app.py
+index 96b7f54..fafa154 100644
+--- a/web/app.py
++++ b/web/app.py
+@@ -6,6 +6,7 @@ import re
+ import secrets
+ import urllib.error
+ import urllib.request
++import uuid
+ from datetime import datetime, timedelta, timezone
+ from http.cookies import SimpleCookie
+ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+@@ -400,7 +401,7 @@ def call_payments(base_url, payload):
+     request = urllib.request.Request(
+         base_url + "/transfers",
+         data=json.dumps(payload).encode("utf-8"),
+-        headers={"Content-Type": "application/json"},
++        headers={"Content-Type": "application/json", "Idempotency-Key": uuid.uuid4().hex},
+         method="POST",
+     )
+     try:

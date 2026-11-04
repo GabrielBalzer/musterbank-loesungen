@@ -1,0 +1,123 @@
+diff --git a/core/bank.py b/core/bank.py
+index 76b2872..bce1de5 100644
+--- a/core/bank.py
++++ b/core/bank.py
+@@ -497,12 +497,15 @@ class BankCore:
+         credit_rate = product["credit_rate_bp"]
+         debit_rate = product["debit_rate_bp"]
+         numerator = 0
++        balance = 0
++        pos = 0
++        total = len(rows)
+         day = from_date
+         while day <= to_date:
+-            balance = 0
+-            for row in rows:
+-                if parse_date(row[1]) <= day:
+-                    balance += row[2]
++            key = day.isoformat()
++            while pos < total and rows[pos][1] <= key:
++                balance += rows[pos][2]
++                pos += 1
+             rate = credit_rate if balance >= 0 else debit_rate
+             numerator += balance * rate * self._day_weight(day_count, day)
+             day += timedelta(days=1)
+diff --git a/core/eod.py b/core/eod.py
+index 1e2f692..94de6b7 100644
+--- a/core/eod.py
++++ b/core/eod.py
+@@ -49,11 +49,11 @@ class EndOfDayProcessor:
+             (amount_cents, account["id"]),
+         )
+ 
+-    def _process_account(self, account, product, holder, business_date):
++    def _process_account(self, account, product, holder, rows, business_date):
+         interest = 0
+         period = self._closing_period(product, account, business_date)
+         if period is not None:
+-            interest = self.bank.calculate_interest(account["iban"], period[0], period[1])
++            interest = self.bank._interest_from_rows(product, rows, period[0], period[1])
+         if interest:
+             self._book(account, business_date, interest, "INTEREST",
+                        "Zinsen %s bis %s" % (period[0].isoformat(), period[1].isoformat()))
+@@ -70,6 +70,12 @@ class EndOfDayProcessor:
+         )
+         return interest, fee
+ 
++    def _group_rows(self, business_date):
++        grouped = {}
++        for row in self.bank._interest_rows(business_date):
++            grouped.setdefault(row[0], []).append(row)
++        return grouped
++
+     def checksum(self, business_date):
+         digest = hashlib.sha256()
+         rows = self.db.execute(
+@@ -84,46 +90,32 @@ class EndOfDayProcessor:
+ 
+     def run(self, business_date):
+         day = business_date.isoformat()
+-        previous = self.db.execute("SELECT finished_at FROM eod_runs WHERE business_date = ?", (day,)).fetchone()
+-        if previous is not None and previous["finished_at"]:
++        if self.db.execute("SELECT 1 FROM eod_runs WHERE business_date = ?", (day,)).fetchone():
+             raise EodAlreadyRun(day)
+         interest_total = 0
+         fee_total = 0
+         count = 0
+-        if previous is None:
++        with self.bank.transaction():
+             self.db.execute("INSERT INTO eod_runs (business_date, started_at) VALUES (?, ?)", (day, _timestamp()))
+-        customers = self.db.execute("SELECT * FROM customers").fetchall()
+-        account_ids = self.db.execute(
+-            "SELECT id FROM accounts WHERE status = ? AND product_code != 'CLEARING' ORDER BY id",
+-            (STATUS_ACTIVE,),
+-        ).fetchall()
+-        # accounts commit one by one, a restart continues with the ones still open
+-        processed = [row["iban"] for row in self.db.execute(
+-            "SELECT iban FROM eod_results WHERE business_date = ?", (day,)
+-        )]
+-        for account_id in account_ids:
+-            account = self.bank.get_account_by_id(account_id["id"])
+-            if account["iban"] in processed:
+-                continue
+-            product = self.bank._get_product(account["product_code"])
+-            holder = None
+-            for customer in customers:
+-                if customer["id"] == account["customer_id"]:
+-                    holder = customer
+-                    break
+-            if not self.bank.check_balance(account["iban"]):
+-                log.warning("balance does not match journal for account %d", account["id"])
+-            with self.bank.transaction():
+-                interest, fee = self._process_account(account, product, holder, business_date)
+-            interest_total += interest
+-            fee_total += fee
+-            count += 1
+-            processed.append(account["iban"])
+-        checksum = self.checksum(business_date)
+-        self.db.execute(
+-            "UPDATE eod_runs SET finished_at = ?, checksum = ? WHERE business_date = ?",
+-            (_timestamp(), checksum, day),
+-        )
++            products = {row["code"]: row for row in self.bank.list_products()}
++            customers = {row["id"]: row for row in self.db.execute("SELECT * FROM customers")}
++            accounts = self.db.execute(
++                "SELECT * FROM accounts WHERE status = ? AND product_code != 'CLEARING' ORDER BY id",
++                (STATUS_ACTIVE,),
++            ).fetchall()
++            grouped = self._group_rows(business_date)
++            for account in accounts:
++                interest, fee = self._process_account(account, products[account["product_code"]],
++                                                      customers[account["customer_id"]],
++                                                      grouped.get(account["id"], []), business_date)
++                interest_total += interest
++                fee_total += fee
++                count += 1
++            checksum = self.checksum(business_date)
++            self.db.execute(
++                "UPDATE eod_runs SET finished_at = ?, checksum = ? WHERE business_date = ?",
++                (_timestamp(), checksum, day),
++            )
+         log.info("end of day %s: %d accounts", day, count)
+         return {
+             "business_date": day,

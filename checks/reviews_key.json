@@ -1,0 +1,114 @@
+{
+  "PR-1001": {
+    "title": "Glossar um SEPA-Zahlungsarten ergänzen",
+    "verdict": "approve",
+    "rules": [],
+    "reason": "Nur Doku."
+  },
+  "PR-1002": {
+    "title": "Kundensuche nach Ort",
+    "verdict": "reject",
+    "rules": [
+      "R4"
+    ],
+    "reason": "Der Ort wird per f-String in das SQL eingesetzt."
+  },
+  "PR-1003": {
+    "title": "Durchschnittliche Monatsausgaben in der Jahresübersicht",
+    "verdict": "reject",
+    "rules": [
+      "R1"
+    ],
+    "reason": "Der Durchschnitt wird als Float in Euro berechnet und gerundet."
+  },
+  "PR-1004": {
+    "title": "Fortschrittsanzeige im Datengenerator",
+    "verdict": "approve",
+    "rules": [],
+    "reason": "Der Float ist ein Prozentwert für die Anzeige, kein Geld."
+  },
+  "PR-1005": {
+    "title": "Sofortüberweisung als eigener Endpunkt",
+    "verdict": "reject",
+    "rules": [
+      "R2"
+    ],
+    "reason": "Neuer Endpunkt bewegt Geld und verlangt keinen Idempotency-Key."
+  },
+  "PR-1006": {
+    "title": "Überziehungsrahmen lesen",
+    "verdict": "approve",
+    "rules": [],
+    "reason": "Rein lesend, Beträge in Cent."
+  },
+  "PR-1007": {
+    "title": "Protokollierung ausgeführter Überweisungen",
+    "verdict": "reject",
+    "rules": [
+      "R3"
+    ],
+    "reason": "Das Log enthält vollständige IBANs und den Empfängernamen."
+  },
+  "PR-1008": {
+    "title": "Abgelehnte Überweisungen im Log",
+    "verdict": "approve",
+    "rules": [],
+    "reason": "Die IBAN ist maskiert, sonst nur technische Angaben."
+  },
+  "PR-1009": {
+    "title": "Suche im Verwendungszweck",
+    "verdict": "reject",
+    "rules": [
+      "R4"
+    ],
+    "reason": "Der Suchtext wird per Verkettung in das SQL eingesetzt."
+  },
+  "PR-1010": {
+    "title": "Anzahl offener Mahnungen",
+    "verdict": "approve",
+    "rules": [],
+    "reason": "Im f-String steht nur eine Konstante, die IBAN ist ein Parameter."
+  },
+  "PR-1011": {
+    "title": "Rabatt auf die Kontoführung für Vereine",
+    "verdict": "reject",
+    "rules": [
+      "R1"
+    ],
+    "reason": "Die Gebühr wird als Float in Euro berechnet."
+  },
+  "PR-1012": {
+    "title": "Fehlgeschlagene Anmeldungen protokollieren",
+    "verdict": "reject",
+    "rules": [
+      "R3"
+    ],
+    "reason": "Das Log enthält E-Mail-Adresse und Namen."
+  },
+  "PR-1013": {
+    "title": "Status der Dienste mit Prozess-ID",
+    "verdict": "approve",
+    "rules": [],
+    "reason": "Nur eine Ausgabe des Werkzeugs."
+  },
+  "PR-1014": {
+    "title": "Auszahlung von Festgeld auf das Girokonto",
+    "verdict": "reject",
+    "rules": [
+      "R2"
+    ],
+    "reason": "Neuer Endpunkt bewegt Geld und verlangt keinen Idempotency-Key."
+  },
+  "PR-1015": {
+    "title": "Anzahl der Buchungen im Textauszug",
+    "verdict": "approve",
+    "rules": [],
+    "reason": "Reine Anzeige, Beträge bleiben in Cent."
+  },
+  "PR-1016": {
+    "title": "Adressänderung per API",
+    "verdict": "approve",
+    "rules": [],
+    "reason": "Ein schreibender Endpunkt ohne Geldbewegung braucht keinen Idempotency-Key, Log und SQL sind sauber."
+  }
+}

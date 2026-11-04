@@ -1,0 +1,22 @@
+diff --git a/core/eod.py b/core/eod.py
+index 9adad24..4777f2b 100644
+--- a/core/eod.py
++++ b/core/eod.py
+@@ -1,7 +1,7 @@
+ """End of day processing: interest closings, account fees and the daily result set."""
+ import hashlib
+ import logging
+-from datetime import datetime, timedelta, timezone
++from datetime import datetime, timezone
+ 
+ from core.bank import STATUS_ACTIVE, STATUS_MATURED
+ from core.dates import is_month_end, is_quarter_end, month_start, parse_date, quarter_start
+@@ -30,7 +30,7 @@ class EndOfDayProcessor:
+             start = parse_date(account["opened_on"])
+         else:
+             return None
+-        return start, business_date - timedelta(days=1)
++        return start, business_date
+ 
+     def _fee_due(self, product, business_date):
+         if product["monthly_fee_cents"] and is_month_end(business_date):

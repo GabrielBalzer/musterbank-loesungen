@@ -1,0 +1,22 @@
+diff --git a/core/bank.py b/core/bank.py
+index 6846c4d..b53333f 100644
+--- a/core/bank.py
++++ b/core/bank.py
+@@ -7,7 +7,7 @@ were retired, which is why everything lives in one class.
+ import logging
+ from contextlib import contextmanager
+ from datetime import date, datetime, timedelta
+-from decimal import Decimal
++from decimal import Decimal, ROUND_HALF_UP
+ 
+ from core import db as dbmod
+ from core.dates import berlin_date, next_business_day, parse_date, utc_now
+@@ -470,7 +470,7 @@ class BankCore:
+ 
+     def _round_interest(self, numerator, denominator):
+         exact = Decimal(numerator) / Decimal(denominator)
+-        return int(exact.quantize(Decimal(1)))
++        return int(exact.quantize(Decimal(1), rounding=ROUND_HALF_UP))
+ 
+     def interest_booked(self, iban, year):
+         rows = self.getBookingsForPeriod(iban, date(year, 1, 1), date(year, 12, 31), "INTEREST")

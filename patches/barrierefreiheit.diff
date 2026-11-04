@@ -1,0 +1,458 @@
+diff --git a/web/app.py b/web/app.py
+index 93b8c16..2f5ab7a 100644
+--- a/web/app.py
++++ b/web/app.py
+@@ -42,9 +42,9 @@ def render(template_file, **context):
+     return template.safe_substitute(**context)
+ 
+ 
+-def page(body, logged_in=True):
++def page(title, body, logged_in=True):
+     nav = render("nav.html") if logged_in else ""
+-    return render("layout.html", nav=nav, body=body)
++    return render("layout.html", title=esc(title), nav=nav, body=body)
+ 
+ 
+ class WebHandler(BaseHTTPRequestHandler):
+@@ -74,7 +74,7 @@ class WebHandler(BaseHTTPRequestHandler):
+         self.end_headers()
+ 
+     def _not_found(self):
+-        self._send_html(404, page("<p>Seite nicht gefunden</p>", logged_in=False))
++        self._send_html(404, page("Seite nicht gefunden", "<h1>Seite nicht gefunden</h1>", logged_in=False))
+ 
+     def _form(self):
+         length = int(self.headers.get("Content-Length", "0") or "0")
+@@ -194,8 +194,8 @@ class WebHandler(BaseHTTPRequestHandler):
+     # ---- login ----
+ 
+     def _login_page(self, error=""):
+-        error_html = '<div class="error">%s</div>' % esc(error) if error else ""
+-        return page(render("login.html", error=error_html), logged_in=False)
++        error_html = '<p class="error" role="alert">%s</p>' % esc(error) if error else ""
++        return page("Anmeldung - Musterbank", render("login.html", error=error_html), logged_in=False)
+ 
+     def _handle_login(self, bank, form):
+         customer = bank.get_customer_by_no(form.get("customer_no", "").strip())
+@@ -223,7 +223,7 @@ class WebHandler(BaseHTTPRequestHandler):
+             rows.append(render("overview_row.html", iban=esc(acct["iban"]), iban_display=esc(format_iban(acct["iban"])),
+                                product=esc(acct["product"]), balance=esc(acct["balance"])))
+         body = render("overview.html", name=esc(summary["name"]), rows="\n".join(rows), total=esc(summary["total"]))
+-        return page(body)
++        return page("Kontoübersicht - Musterbank", body)
+ 
+     def _account_page(self, bank, customer, iban):
+         account = self._own_account(bank, customer, iban)
+@@ -237,7 +237,7 @@ class WebHandler(BaseHTTPRequestHandler):
+                                purpose=esc(line["purpose"]), amount=esc(line["amount"])))
+         body = render("account.html", iban=esc(account["iban"]), iban_display=esc(format_iban(account["iban"])),
+                       balance=esc(format_eur(account["balance_cents"])), rows="\n".join(rows))
+-        self._send_html(200, page(body))
++        self._send_html(200, page("Umsätze - Musterbank", body))
+ 
+     def _statement_page(self, bank, customer, iban, query):
+         account = self._own_account(bank, customer, iban)
+@@ -267,7 +267,7 @@ class WebHandler(BaseHTTPRequestHandler):
+         content = render("statement.html", iban=esc(account["iban"]), iban_display=esc(format_iban(account["iban"])),
+                          month=esc(month), month_links=month_links, opening=esc(format_eur(statement["opening_cents"])),
+                          closing=esc(format_eur(statement["closing_cents"])), rows="\n".join(rows))
+-        self._send_html(200, page(content))
++        self._send_html(200, page("Kontoauszug - Musterbank", content))
+ 
+     def _move_page(self, bank, customer, error="", success=""):
+         options = []
+@@ -278,11 +278,11 @@ class WebHandler(BaseHTTPRequestHandler):
+             options.append('<option value="%s">%s</option>' % (esc(acct["iban"]), esc(label)))
+         message = ""
+         if error:
+-            message = '<div class="error">%s</div>' % esc(error)
++            message = '<p class="error" role="alert">%s</p>' % esc(error)
+         elif success:
+-            message = '<div class="success">%s</div>' % esc(success)
++            message = '<p class="success" role="status">%s</p>' % esc(success)
+         body = render("move.html", message=message, options="\n".join(options))
+-        return page(body)
++        return page("Umbuchung - Musterbank", body)
+ 
+     def _handle_move(self, bank, customer, form):
+         source = self._own_account(bank, customer, form.get("from_iban", ""))
+@@ -308,7 +308,7 @@ class WebHandler(BaseHTTPRequestHandler):
+             rows.append(render("mailbox_row.html", id=message["id"], created_at=esc(message["created_at"][:10]),
+                                subject=esc(message["subject"]), status=status))
+         body = render("mailbox.html", rows="\n".join(rows))
+-        return page(body)
++        return page("Postfach - Musterbank", body)
+ 
+     def _message_page(self, bank, customer, message_id):
+         message = Mailbox(bank).read_message(customer["id"], message_id)
+@@ -317,18 +317,18 @@ class WebHandler(BaseHTTPRequestHandler):
+             return
+         body = render("message.html", subject=esc(message["subject"]), created_at=esc(message["created_at"][:10]),
+                       text=esc(message["body"]))
+-        self._send_html(200, page(body))
++        self._send_html(200, page("Nachricht - Musterbank", body))
+ 
+     def _profile_page(self, customer, error="", success=""):
+         message = ""
+         if error:
+-            message = '<div class="error">%s</div>' % esc(error)
++            message = '<p class="error" role="alert">%s</p>' % esc(error)
+         elif success:
+-            message = '<div class="success">%s</div>' % esc(success)
++            message = '<p class="success" role="status">%s</p>' % esc(success)
+         body = render("profile.html", message=message, customer_no=esc(customer["customer_no"]),
+                       street=esc(customer["street"]), zip_code=esc(customer["zip"]), city=esc(customer["city"]),
+                       email=esc(customer["email"]))
+-        return page(body)
++        return page("Meine Daten - Musterbank", body)
+ 
+     def _handle_profile(self, bank, customer, form):
+         street = form.get("street", "").strip()
+@@ -355,13 +355,13 @@ class WebHandler(BaseHTTPRequestHandler):
+             options.append('<option value="%s"%s>%s</option>' % (esc(acct["iban"]), selected, esc(format_iban(acct["iban"]))))
+         message = ""
+         if error:
+-            message = '<div class="error">%s</div>' % esc(error)
++            message = '<p class="error" role="alert">%s</p>' % esc(error)
+         elif success:
+-            message = '<div class="success">%s</div>' % esc(success)
++            message = '<p class="success" role="status">%s</p>' % esc(success)
+         body = render("transfer.html", message=message, options="\n".join(options),
+                       creditor_name=esc(form.get("creditor_name", "")), creditor_iban=esc(form.get("creditor_iban", "")),
+                       amount=esc(form.get("amount", "")), purpose=esc(form.get("purpose", "")))
+-        return page(body)
++        return page("Überweisung - Musterbank", body)
+ 
+     def _handle_transfer(self, bank, customer, form):
+         debtor = normalize_iban(form.get("debtor_iban", ""))
+diff --git a/web/static/logo.svg b/web/static/logo.svg
+index 19c4c9c..1a859c1 100644
+--- a/web/static/logo.svg
++++ b/web/static/logo.svg
+@@ -1 +1 @@
+-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 32" width="160" height="32"><rect width="32" height="32" rx="6" fill="#7ab6d4"/><path d="M7 24V8l9 10 9-10v16" fill="none" stroke="#ffffff" stroke-width="3"/><text x="40" y="22" font-family="sans-serif" font-size="18" font-weight="700" fill="#7ab6d4">Musterbank</text></svg>
++<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 32" width="160" height="32"><rect width="32" height="32" rx="6" fill="#0b4f6c"/><path d="M7 24V8l9 10 9-10v16" fill="none" stroke="#ffffff" stroke-width="3"/><text x="40" y="22" font-family="sans-serif" font-size="18" font-weight="700" fill="#0b4f6c">Musterbank</text></svg>
+diff --git a/web/static/style.css b/web/static/style.css
+index 52cc8cc..a4d4910 100644
+--- a/web/static/style.css
++++ b/web/static/style.css
+@@ -1,33 +1,31 @@
+ :root {
+-  --ink: #3a4552;
+-  --muted: #b4bbc2;
+-  --brand: #7ab6d4;
++  --ink: #1b2430;
++  --muted: #55606e;
++  --brand: #0b4f6c;
+   --paper: #ffffff;
+   --band: #eef2f5;
+-  --error: #f08a8a;
+-  --success: #8fd0a6;
++  --error: #a4161a;
++  --success: #1b6e3c;
+ }
+-* { box-sizing: border-box; outline: none; }
+-body { margin: 0; font: 14px/1.4 system-ui, sans-serif; color: var(--ink); background: var(--paper); }
+-a { color: var(--brand); text-decoration: none; }
+-.site-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--band); }
+-.site-header img { cursor: pointer; }
+-.menu { display: flex; flex-wrap: wrap; gap: 16px; }
+-.menu-item { color: var(--brand); cursor: pointer; }
+-.content { max-width: 960px; margin: 0 auto; padding: 16px; }
+-.site-footer { padding: 16px; color: var(--muted); text-align: center; }
+-.title { font-size: 22px; font-weight: 600; margin: 8px 0 16px; }
++* { box-sizing: border-box; }
++body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: var(--ink); background: var(--paper); }
++a { color: var(--brand); }
++a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
++.skip { position: absolute; left: -999px; }
++.skip:focus { left: 8px; top: 8px; background: var(--paper); padding: 8px; }
++header.site { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--band); }
++nav ul { display: flex; flex-wrap: wrap; gap: 16px; list-style: none; margin: 0; padding: 0; }
++main { max-width: 960px; margin: 0 auto; padding: 16px; }
++footer.site { padding: 16px; color: var(--muted); text-align: center; }
+ table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+-td { padding: 8px; border-bottom: 1px solid #e5e9ed; color: #98a1aa; }
+-.head td { color: var(--muted); font-weight: 600; }
+-.row { cursor: pointer; }
+-.row:hover { background: var(--band); }
++caption { text-align: left; font-weight: 600; padding-bottom: 4px; }
++th, td { padding: 8px; border-bottom: 1px solid #c8d0d8; text-align: left; }
+ .num { text-align: right; white-space: nowrap; }
+ .stack { display: grid; gap: 8px; max-width: 420px; }
+ .inline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+-input, select { padding: 8px; font: inherit; border: 1px solid #e5e9ed; border-radius: 4px; }
+-input::placeholder { color: #c5ccd2; }
+-.btn { display: inline-block; padding: 8px 16px; color: #ffffff; background: var(--brand); border-radius: 4px; cursor: pointer; text-align: center; }
+-.error { color: var(--error); }
+-.success { color: var(--success); }
++input, select { padding: 8px; font: inherit; border: 1px solid var(--muted); border-radius: 4px; }
++button { padding: 8px 16px; font: inherit; color: #ffffff; background: var(--brand); border: 0; border-radius: 4px; cursor: pointer; }
++button.linklike { padding: 0; color: var(--brand); background: none; text-decoration: underline; }
++.error { color: var(--error); font-weight: 600; }
++.success { color: var(--success); font-weight: 600; }
+ .letter { white-space: pre-wrap; font: inherit; }
+diff --git a/web/templates/account.html b/web/templates/account.html
+index a94e265..6efa7f4 100644
+--- a/web/templates/account.html
++++ b/web/templates/account.html
+@@ -1,7 +1,12 @@
+-<div class="title">Umsätze</div>
++<h1>Umsätze</h1>
+ <p>Konto $iban_display, Saldo <strong>$balance</strong></p>
+-<div class="btn" onclick="location.href='/statements/$iban'">Kontoauszug anzeigen</div>
++<p><a href="/statements/$iban">Kontoauszug anzeigen</a></p>
+ <table>
+-<tr class="head"><td>Buchung</td><td>Valuta</td><td>Name</td><td>Verwendungszweck</td><td class="num">Betrag</td></tr>
++<caption>Letzte Umsätze</caption>
++<thead>
++<tr><th scope="col">Buchung</th><th scope="col">Valuta</th><th scope="col">Name</th><th scope="col">Verwendungszweck</th><th scope="col" class="num">Betrag</th></tr>
++</thead>
++<tbody>
+ $rows
++</tbody>
+ </table>
+diff --git a/web/templates/layout.html b/web/templates/layout.html
+index d642ab6..40af255 100644
+--- a/web/templates/layout.html
++++ b/web/templates/layout.html
+@@ -1,19 +1,20 @@
+ <!doctype html>
+-<html>
++<html lang="de">
+ <head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+-<title>Musterbank</title>
++<title>$title</title>
+ <link rel="stylesheet" href="/static/style.css">
+ </head>
+ <body>
+-<div class="site-header">
+-<img src="/static/logo.svg" width="160" height="32" onclick="location.href='/'">
++<a class="skip" href="#main">Zum Inhalt springen</a>
++<header class="site">
++<a href="/"><img src="/static/logo.svg" alt="Musterbank AG" width="160" height="32"></a>
+ $nav
+-</div>
+-<div class="content">
++</header>
++<main id="main">
+ $body
+-</div>
+-<div class="site-footer">Musterbank AG, Musterstadt</div>
++</main>
++<footer class="site"><p>Musterbank AG, Musterstadt</p></footer>
+ </body>
+ </html>
+diff --git a/web/templates/login.html b/web/templates/login.html
+index cfab7fe..e1c176b 100644
+--- a/web/templates/login.html
++++ b/web/templates/login.html
+@@ -1,7 +1,9 @@
+-<div class="title">Anmeldung</div>
++<h1>Anmeldung</h1>
+ $error
+ <form method="post" action="/login" class="stack">
+-<input name="customer_no" placeholder="Kundennummer">
+-<input name="pin" type="password" placeholder="PIN">
+-<div class="btn" onclick="this.parentNode.submit()">Anmelden</div>
++<label for="customer_no">Kundennummer</label>
++<input id="customer_no" name="customer_no" autocomplete="username" required>
++<label for="pin">PIN</label>
++<input id="pin" name="pin" type="password" autocomplete="current-password" required>
++<button type="submit">Anmelden</button>
+ </form>
+diff --git a/web/templates/mailbox.html b/web/templates/mailbox.html
+index db16d59..d00ed22 100644
+--- a/web/templates/mailbox.html
++++ b/web/templates/mailbox.html
+@@ -1,5 +1,10 @@
+-<div class="title">Postfach</div>
++<h1>Postfach</h1>
+ <table>
+-<tr class="head"><td>Datum</td><td>Betreff</td><td>Status</td></tr>
++<caption>Ihre Nachrichten</caption>
++<thead>
++<tr><th scope="col">Datum</th><th scope="col">Betreff</th><th scope="col">Status</th></tr>
++</thead>
++<tbody>
+ $rows
++</tbody>
+ </table>
+diff --git a/web/templates/mailbox_row.html b/web/templates/mailbox_row.html
+index 9205e30..e1307e4 100644
+--- a/web/templates/mailbox_row.html
++++ b/web/templates/mailbox_row.html
+@@ -1 +1 @@
+-<tr class="row" onclick="location.href='/mailbox/$id'"><td>$created_at</td><td>$subject</td><td>$status</td></tr>
++<tr><td>$created_at</td><td><a href="/mailbox/$id">$subject</a></td><td>$status</td></tr>
+diff --git a/web/templates/message.html b/web/templates/message.html
+index a45ea4c..07b3317 100644
+--- a/web/templates/message.html
++++ b/web/templates/message.html
+@@ -1,4 +1,4 @@
+-<div class="title">$subject</div>
++<h1>$subject</h1>
+ <p>Eingegangen am $created_at</p>
+ <pre class="letter">$text</pre>
+-<div class="btn" onclick="location.href='/mailbox'">Zurück zum Postfach</div>
++<p><a href="/mailbox">Zurück zum Postfach</a></p>
+diff --git a/web/templates/move.html b/web/templates/move.html
+index 9358fce..8b13431 100644
+--- a/web/templates/move.html
++++ b/web/templates/move.html
+@@ -1,12 +1,15 @@
+-<div class="title">Umbuchung</div>
++<h1>Umbuchung</h1>
+ $message
+ <form method="post" action="/move" class="stack">
+-<select name="from_iban">
++<label for="from_iban">Von Konto</label>
++<select id="from_iban" name="from_iban" required>
+ $options
+ </select>
+-<select name="to_iban">
++<label for="to_iban">Auf Konto</label>
++<select id="to_iban" name="to_iban" required>
+ $options
+ </select>
+-<input name="amount" placeholder="Betrag in Euro">
+-<div class="btn" onclick="this.parentNode.submit()">Umbuchen</div>
++<label for="amount">Betrag in Euro</label>
++<input id="amount" name="amount" inputmode="decimal" required>
++<button type="submit">Umbuchen</button>
+ </form>
+diff --git a/web/templates/nav.html b/web/templates/nav.html
+index 2a3c8b9..f4f6eff 100644
+--- a/web/templates/nav.html
++++ b/web/templates/nav.html
+@@ -1,8 +1,10 @@
+-<div class="menu">
+-<div class="menu-item" onclick="location.href='/'">Konten</div>
+-<div class="menu-item" onclick="location.href='/transfer'">Überweisung</div>
+-<div class="menu-item" onclick="location.href='/move'">Umbuchung</div>
+-<div class="menu-item" onclick="location.href='/mailbox'">Postfach</div>
+-<div class="menu-item" onclick="location.href='/profile'">Meine Daten</div>
+-<form method="post" action="/logout"><div class="menu-item" onclick="this.parentNode.submit()">Abmelden</div></form>
+-</div>
++<nav aria-label="Hauptmenü">
++<ul>
++<li><a href="/">Konten</a></li>
++<li><a href="/transfer">Überweisung</a></li>
++<li><a href="/move">Umbuchung</a></li>
++<li><a href="/mailbox">Postfach</a></li>
++<li><a href="/profile">Meine Daten</a></li>
++<li><form method="post" action="/logout"><button type="submit" class="linklike">Abmelden</button></form></li>
++</ul>
++</nav>
+diff --git a/web/templates/overview.html b/web/templates/overview.html
+index 2af2b0e..1927b70 100644
+--- a/web/templates/overview.html
++++ b/web/templates/overview.html
+@@ -1,6 +1,13 @@
+-<div class="title">Guten Tag, $name</div>
++<h1>Guten Tag, $name</h1>
+ <table>
+-<tr class="head"><td>Konto</td><td>Produkt</td><td class="num">Saldo</td></tr>
++<caption>Ihre Konten</caption>
++<thead>
++<tr><th scope="col">Konto</th><th scope="col">Produkt</th><th scope="col" class="num">Saldo</th></tr>
++</thead>
++<tbody>
+ $rows
+-<tr class="head"><td colspan="2">Summe</td><td class="num">$total</td></tr>
++</tbody>
++<tfoot>
++<tr><th scope="row" colspan="2">Summe</th><td class="num">$total</td></tr>
++</tfoot>
+ </table>
+diff --git a/web/templates/overview_row.html b/web/templates/overview_row.html
+index 905dc16..122c624 100644
+--- a/web/templates/overview_row.html
++++ b/web/templates/overview_row.html
+@@ -1 +1 @@
+-<tr class="row" onclick="location.href='/accounts/$iban'"><td>$iban_display</td><td>$product</td><td class="num">$balance</td></tr>
++<tr><td><a href="/accounts/$iban">$iban_display</a></td><td>$product</td><td class="num">$balance</td></tr>
+diff --git a/web/templates/profile.html b/web/templates/profile.html
+index 251bd79..2c3bbf0 100644
+--- a/web/templates/profile.html
++++ b/web/templates/profile.html
+@@ -1,10 +1,14 @@
+-<div class="title">Meine Daten</div>
++<h1>Meine Daten</h1>
+ <p>Kundennummer: $customer_no</p>
+ $message
+ <form method="post" action="/profile" class="stack">
+-<input name="street" value="$street" placeholder="Straße und Hausnummer">
+-<input name="zip" value="$zip_code" placeholder="Postleitzahl">
+-<input name="city" value="$city" placeholder="Ort">
+-<input name="email" value="$email" placeholder="E-Mail">
+-<div class="btn" onclick="this.parentNode.submit()">Speichern</div>
++<label for="street">Straße und Hausnummer</label>
++<input id="street" name="street" value="$street" autocomplete="street-address" required>
++<label for="zip">Postleitzahl</label>
++<input id="zip" name="zip" value="$zip_code" autocomplete="postal-code" required>
++<label for="city">Ort</label>
++<input id="city" name="city" value="$city" autocomplete="address-level2" required>
++<label for="email">E-Mail</label>
++<input id="email" name="email" type="email" value="$email" autocomplete="email" required>
++<button type="submit">Speichern</button>
+ </form>
+diff --git a/web/templates/statement.html b/web/templates/statement.html
+index 881a5cc..586f420 100644
+--- a/web/templates/statement.html
++++ b/web/templates/statement.html
+@@ -1,13 +1,19 @@
+-<div class="title">Kontoauszug $month</div>
++<h1>Kontoauszug $month</h1>
+ <p>Konto $iban_display</p>
+ <form method="get" action="/statements/$iban" class="inline">
+-<input name="month" value="$month" placeholder="Monat">
+-<div class="btn" onclick="this.parentNode.submit()">Anzeigen</div>
++<label for="month">Monat</label>
++<input id="month" name="month" value="$month" pattern="[0-9]{4}-[0-9]{2}">
++<button type="submit">Anzeigen</button>
+ </form>
+ <p><a href="/statements/$iban?month=$month&amp;format=csv">Als CSV herunterladen</a></p>
+ <p>Weitere Monate: $month_links</p>
+ <p>Anfangssaldo: <strong>$opening</strong>, Endsaldo: <strong>$closing</strong></p>
+ <table>
+-<tr class="head"><td>Buchung</td><td>Valuta</td><td>Name</td><td>Verwendungszweck</td><td class="num">Betrag</td></tr>
++<caption>Buchungen im Auszugszeitraum</caption>
++<thead>
++<tr><th scope="col">Buchung</th><th scope="col">Valuta</th><th scope="col">Name</th><th scope="col">Verwendungszweck</th><th scope="col" class="num">Betrag</th></tr>
++</thead>
++<tbody>
+ $rows
++</tbody>
+ </table>
+diff --git a/web/templates/transfer.html b/web/templates/transfer.html
+index 2880695..752f31a 100644
+--- a/web/templates/transfer.html
++++ b/web/templates/transfer.html
+@@ -1,12 +1,17 @@
+-<div class="title">Überweisung</div>
++<h1>Überweisung</h1>
+ $message
+ <form method="post" action="/transfer" class="stack">
+-<select name="debtor_iban">
++<label for="debtor_iban">Von Konto</label>
++<select id="debtor_iban" name="debtor_iban" required>
+ $options
+ </select>
+-<input name="creditor_name" value="$creditor_name" placeholder="Empfänger">
+-<input name="creditor_iban" value="$creditor_iban" placeholder="IBAN des Empfängers">
+-<input name="amount" value="$amount" placeholder="Betrag in Euro">
+-<input name="purpose" value="$purpose" placeholder="Verwendungszweck" maxlength="140">
+-<div class="btn" onclick="this.parentNode.submit()">Überweisen</div>
++<label for="creditor_name">Empfänger</label>
++<input id="creditor_name" name="creditor_name" value="$creditor_name" required>
++<label for="creditor_iban">IBAN des Empfängers</label>
++<input id="creditor_iban" name="creditor_iban" value="$creditor_iban" required>
++<label for="amount">Betrag in Euro</label>
++<input id="amount" name="amount" value="$amount" inputmode="decimal" required>
++<label for="purpose">Verwendungszweck</label>
++<input id="purpose" name="purpose" value="$purpose" maxlength="140">
++<button type="submit">Überweisen</button>
+ </form>
